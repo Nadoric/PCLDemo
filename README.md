@@ -1,6 +1,6 @@
 # OpenCV + PCL Demo · 图像与点云算法实验室
 
-这是一个可直接学习、编译和运行的 **C++17 / OpenCV / PCL / Qt Widgets 桌面项目**。使用本机 `D:\PCL` 中的 PCL 1.15.1 与 `D:\opencv\5.0.0\opencv` 中的 OpenCV 5.0.0。保留原有 15 个 PCL 示例，新增 10 个 OpenCV 与 PCL 联动示例；内置点云和 RGB-D 数据。
+这是一个可用于学习的 **C++17 / OpenCV / PCL / Qt Widgets 桌面项目**。使用 PCL 1.15.1 与 OpenCV 5.0.0。支持 15 个 PCL 示例和 10 个 OpenCV 与 PCL 联动示例；内置点云和 RGB-D 数据。
 
 ## OpenCV + PCL 联动
 
