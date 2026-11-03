@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="UserMacros">
+    <OpenCVRoot Condition="'$(OpenCVRoot)'==''">D:\opencv\5.0.0\opencv</OpenCVRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <OpenCVDebugSuffix Condition="'$(Configuration)'=='Debug'">d</OpenCVDebugSuffix>
+    <OpenCVDebugSuffix Condition="'$(Configuration)'!='Debug'"></OpenCVDebugSuffix>
+    <IncludePath>$(OpenCVRoot)\build\include;$(IncludePath)</IncludePath>
+    <LibraryPath>$(OpenCVRoot)\build\x64\vc16\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <Link>
+      <AdditionalDependencies>opencv_world500$(OpenCVDebugSuffix).lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

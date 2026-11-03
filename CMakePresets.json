@@ -1,0 +1,23 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "msvc-x64",
+      "displayName": "PCL Demo / MSVC x64",
+      "generator": "Visual Studio 18 2026",
+      "architecture": "x64",
+      "toolset": "v143",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "PCL_DIR": "D:/PCL/cmake",
+        "OpenCV_DIR": "D:/opencv/5.0.0/opencv/build",
+        "Qt6_DIR": "D:/software/Qt/6.12.0/msvc2022_64/lib/cmake/Qt6",
+        "BUILD_TESTING": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "release", "configurePreset": "msvc-x64", "configuration": "Release", "jobs": 2 },
+    { "name": "debug", "configurePreset": "msvc-x64", "configuration": "Debug", "jobs": 2 }
+  ]
+}

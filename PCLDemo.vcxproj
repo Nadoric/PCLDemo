@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{87EB47DD-805E-48A6-979A-3E52A8A8D415}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>PCLDemo</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)'=='Release'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="PropertySheets">
+    <Import Project="config\PCL1.15.1_$(Configuration).props" />
+    <Import Project="config\QtAndProject.props" />
+    <Import Project="config\OpenCV.props" />
+  </ImportGroup>
+  <PropertyGroup>
+    <OutDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\</OutDir>
+    <IntDir>$(MSBuildProjectDirectory)\obj\$(PlatformToolset)\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>PCLDemo</TargetName>
+    <LocalDebuggerCommand>$(TargetPath)</LocalDebuggerCommand>
+    <LocalDebuggerWorkingDirectory>$(MSBuildProjectDirectory)</LocalDebuggerWorkingDirectory>
+    <LocalDebuggerEnvironment>PATH=$(OpenCVRoot)\build\x64\vc16\bin;$(PCLRoot)\bin;$(PCLRoot)\3rdParty\VTK\bin;$(PCLRoot)\3rdParty\FLANN\bin;$(PCLRoot)\3rdParty\Qhull\bin;$(OpenNI2Root)\Redist;$(QtRoot)\bin;%PATH%
+QT_QPA_PLATFORM_PLUGIN_PATH=$(QtRoot)\plugins\platforms</LocalDebuggerEnvironment>
+    <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory)\resources;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\Algorithms.cpp" />
+    <ClCompile Include="src\PointCloudView.cpp" />
+    <ClCompile Include="src\MainWindow.cpp" />
+    <ClCompile Include="src\SelfTest.cpp" />
+    <ClCompile Include="src\RgbdAlgorithms.cpp" />
+    <ClCompile Include="src\RgbdPanel.cpp" />
+    <ClCompile Include="src\CvSelfTest.cpp" />
+    <ClCompile Include="$(IntDir)moc_MainWindow.cpp" />
+    <ClCompile Include="$(IntDir)moc_PointCloudView.cpp" />
+    <ClCompile Include="$(IntDir)qrc_PCLDemo.cpp" />
+    <ClInclude Include="src\Algorithms.h" />
+    <ClInclude Include="src\SelfTest.h" />
+    <ClInclude Include="src\RgbdAlgorithms.h" />
+    <ClInclude Include="src\RgbdPanel.h" />
+  </ItemGroup>
+  <!-- 原生 MSBuild 自定义生成：不需要 Qt VS Tools 扩展，也不需要先运行 CMake。 -->
+  <ItemGroup>
+    <ClInclude Include="src\MainWindow.h" />
+    <ClInclude Include="src\PointCloudView.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+    <None Include="resources\PCLDemo.qrc" />
+    <None Include="resources\pcldemo.png" />
+    <Image Include="resources\pcldemo.ico" />
+    <ResourceCompile Include="resources\PCLDemo.rc" />
+    <None Include="config\QtAndProject.props" />
+    <None Include="config\OpenCV.props" />
+    <None Include="config\PCL1.15.1_Debug.props" />
+    <None Include="config\PCL1.15.1_Release.props" />
+    <None Include="Build-Debug.cmd" />
+    <None Include="Build-Release.cmd" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+  <!-- Qt 资源内嵌到程序，窗口图标不依赖运行目录中的外部文件。 -->
+  <Target Name="GenerateQtResources" BeforeTargets="ClCompile" DependsOnTargets="PrepareForBuild;CheckLocalDependencies" Inputs="$(MSBuildProjectDirectory)\resources\PCLDemo.qrc;$(MSBuildProjectDirectory)\resources\pcldemo.ico;$(QtRoot)\bin\rcc.exe;$(MSBuildProjectFullPath)" Outputs="$(IntDir)qrc_PCLDemo.cpp">
+    <MakeDir Directories="$(IntDir)" />
+    <Exec Command="&quot;$(QtRoot)\bin\rcc.exe&quot; --name PCLDemo &quot;$(MSBuildProjectDirectory)\resources\PCLDemo.qrc&quot; -o &quot;$(IntDir)qrc_PCLDemo.cpp&quot;" />
+    <ItemGroup>
+      <FileWrites Include="$(IntDir)qrc_PCLDemo.cpp" />
+    </ItemGroup>
+  </Target>
+  <!-- 一个目标内顺序运行 moc；输入未变化时跳过，生成完成之后再进入 C++ 编译。
+       按工具集/平台/配置隔离中间目录，避免 v143 与 v145 共用生成源码和编译结果。 -->
+  <Target Name="GenerateQtMetaObjects" BeforeTargets="ClCompile" DependsOnTargets="PrepareForBuild;CheckLocalDependencies" Inputs="$(MSBuildProjectDirectory)\src\MainWindow.h;$(MSBuildProjectDirectory)\src\PointCloudView.h;$(MSBuildProjectDirectory)\src\Algorithms.h;$(QtRoot)\bin\moc.exe;$(MSBuildProjectFullPath);$(MSBuildProjectDirectory)\config\QtAndProject.props" Outputs="$(IntDir)moc_MainWindow.cpp;$(IntDir)moc_PointCloudView.cpp">
+    <MakeDir Directories="$(IntDir)" />
+    <Message Text="Qt moc: generating meta objects sequentially ($(PlatformToolset), $(Configuration))" Importance="high" />
+    <Exec Command="&quot;$(QtRoot)\bin\moc.exe&quot; -DQT_WIDGETS_LIB -DQT_GUI_LIB -DQT_CORE_LIB -I&quot;$(QtRoot)\include&quot; -I&quot;$(QtRoot)\include\QtCore&quot; -I&quot;$(QtRoot)\include\QtWidgets&quot; &quot;$(MSBuildProjectDirectory)\src\MainWindow.h&quot; -o &quot;$(IntDir)moc_MainWindow.cpp&quot;" />
+    <Exec Command="&quot;$(QtRoot)\bin\moc.exe&quot; -DQT_WIDGETS_LIB -DQT_GUI_LIB -DQT_CORE_LIB -I&quot;$(QtRoot)\include&quot; -I&quot;$(QtRoot)\include\QtCore&quot; -I&quot;$(QtRoot)\include\QtWidgets&quot; &quot;$(MSBuildProjectDirectory)\src\PointCloudView.h&quot; -o &quot;$(IntDir)moc_PointCloudView.cpp&quot;" />
+  </Target>
+  <Target Name="TrackQtMetaObjects" BeforeTargets="ClCompile" DependsOnTargets="GenerateQtMetaObjects">
+    <ItemGroup>
+      <FileWrites Include="$(IntDir)moc_MainWindow.cpp;$(IntDir)moc_PointCloudView.cpp" />
+    </ItemGroup>
+  </Target>
+  <Target Name="CheckLocalDependencies" BeforeTargets="PrepareForBuild">
+    <Error Condition="!Exists('$(QtRoot)\bin\moc.exe')" Text="Qt MSVC installation not found. Set QtRoot in config\QtAndProject.props." />
+    <Error Condition="!Exists('$(PCLRoot)\include\pcl-1.15\pcl\pcl_config.h')" Text="PCL installation not found. Set PCLRoot in the PCL property sheets." />
+    <Error Condition="!Exists('$(OpenCVRoot)\build\x64\vc16\lib\opencv_world500$(OpenCVDebugSuffix).lib')" Text="OpenCV library not found. Set OpenCVRoot in config\OpenCV.props." />
+  </Target>
+</Project>

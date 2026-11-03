@@ -1,0 +1,2 @@
+// 使用最小资源 ID，使 Windows Shell 默认选择此应用图标。
+1 ICON "pcldemo.ico"

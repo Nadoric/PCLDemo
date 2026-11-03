@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Label="UserMacros">
+    <QtRoot Condition="'$(QtRoot)'==''">D:\software\Qt\6.12.0\msvc2022_64</QtRoot>
+  </PropertyGroup>
+  <PropertyGroup>
+    <QtDebugSuffix Condition="'$(Configuration)'=='Debug'">d</QtDebugSuffix>
+    <QtDebugSuffix Condition="'$(Configuration)'!='Debug'"></QtDebugSuffix>
+    <BoostDebugSuffix Condition="'$(Configuration)'=='Debug'">-gd</BoostDebugSuffix>
+    <BoostDebugSuffix Condition="'$(Configuration)'!='Debug'"></BoostDebugSuffix>
+    <IncludePath>$(QtRoot)\include;$(QtRoot)\include\QtWidgets;$(QtRoot)\include\QtGui;$(QtRoot)\include\QtCore;$(QtRoot)\include\QtConcurrent;$(QtRoot)\mkspecs\win32-msvc;$(IncludePath)</IncludePath>
+    <LibraryPath>$(QtRoot)\lib;$(LibraryPath)</LibraryPath>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(MSBuildProjectDirectory)\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <WarningLevel>Level3</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <Optimization Condition="'$(Configuration)'=='Debug'">Disabled</Optimization>
+      <Optimization Condition="'$(Configuration)'=='Release'">MaxSpeed</Optimization>
+      <PreprocessorDefinitions>WIN32;_WINDOWS;WIN32_LEAN_AND_MEAN;QT_WIDGETS_LIB;QT_GUI_LIB;QT_CORE_LIB;QT_CONCURRENT_LIB;_ENABLE_EXTENDED_ALIGNED_STORAGE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)'=='Debug'">_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)'=='Release'">NDEBUG;QT_NO_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalOptions>/utf-8 /Zc:__cplusplus /Zc:preprocessor /permissive- %(AdditionalOptions)</AdditionalOptions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>Qt6Widgets$(QtDebugSuffix).lib;Qt6Gui$(QtDebugSuffix).lib;Qt6Core$(QtDebugSuffix).lib;Qt6Concurrent$(QtDebugSuffix).lib;Qt6EntryPoint$(QtDebugSuffix).lib;libboost_regex-vc143-mt$(BoostDebugSuffix)-x64-1_87.lib;libboost_random-vc143-mt$(BoostDebugSuffix)-x64-1_87.lib;libboost_atomic-vc143-mt$(BoostDebugSuffix)-x64-1_87.lib;d3d11.lib;dxgi.lib;dxguid.lib;d3d12.lib;mpr.lib;userenv.lib;shell32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;ole32.lib;oleaut32.lib;uuid.lib;ws2_32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>
