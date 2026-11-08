@@ -281,14 +281,14 @@ namespace demo
             this,
             [this]
             {
-                resultView_->setCamera(originalView_->camera());
+                resultView_->setCamera(originalView_->camera(), true);
             });
         connect(resultView_,
             &PointCloudView::cameraChanged,
             this,
             [this]
             {
-                originalView_->setCamera(resultView_->camera());
+                originalView_->setCamera(resultView_->camera(), true);
             });
         connect(normals,
             &QCheckBox::toggled,

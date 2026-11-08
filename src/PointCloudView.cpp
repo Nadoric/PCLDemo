@@ -6,6 +6,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace demo
 {
@@ -13,6 +14,10 @@ namespace demo
         : QWidget(parent), title_(std::move(title))
     {
         setMinimumSize(200, 260);
+        setAttribute(Qt::WA_OpaquePaintEvent);
+        interactionTimer_.setSingleShot(true);
+        interactionTimer_.setInterval(140);
+        connect(&interactionTimer_, &QTimer::timeout, this, &PointCloudView::invalidateFrame);
         setMouseTracking(true);
         setCursor(Qt::OpenHandCursor);
         setToolTip(
@@ -22,34 +27,177 @@ namespace demo
     void PointCloudView::setResult(const Result& data)
     {
         data_ = data;
+        rebuildDisplayData();
+        invalidateFrame();
+    }
+
+    void PointCloudView::setCamera(const Camera& camera, bool interacting)
+    {
+        camera_ = camera;
+        if (interacting)
+        {
+            beginInteraction();
+        }
+        else
+        {
+            interactionTimer_.stop();
+            invalidateFrame();
+        }
+    }
+
+    void PointCloudView::invalidateFrame()
+    {
+        frameDirty_ = true;
         update();
     }
 
-    void PointCloudView::setCamera(const Camera& camera)
+    void PointCloudView::beginInteraction()
     {
-        camera_ = camera;
-        update();
+        interactionTimer_.start();
+        invalidateFrame();
+    }
+
+    void PointCloudView::rebuildDisplayData()
+    {
+        auto sample =
+            [&](const Cloud::ConstPtr& cloud, std::vector<DisplayPoint>& points, bool target)
+        {
+            points.clear();
+            if (!cloud)
+            {
+                return;
+            }
+            points.reserve(std::min<std::size_t>(cloud->size(), 45000));
+            const auto stride = std::max<std::size_t>(1, (cloud->size() + 44999) / 45000);
+            for (std::size_t i = 0; i < cloud->size(); i += stride)
+            {
+                const auto& point = (*cloud)[i];
+                if (!pcl::isFinite(point))
+                {
+                    continue;
+                }
+                const Color color = target
+                    ? Color{68, 223, 153}
+                    : (data_.colors.size() == cloud->size() ? data_.colors[i] : Color{});
+                points.push_back({point.getVector3fMap(), qRgb(color.r, color.g, color.b)});
+            }
+        };
+        sample(data_.cloud, cloudPoints_, false);
+        sample(data_.target, targetPoints_, true);
+
+        // 网格格式转换和有限性检查仅在结果变化时执行，不进入逐帧绘制路径。
+        triangles_.clear();
+        if (data_.mesh && !data_.mesh->polygons.empty())
+        {
+            Cloud vertices;
+            pcl::fromPCLPointCloud2(data_.mesh->cloud, vertices);
+            const auto step =
+                std::max<std::size_t>(1, (data_.mesh->polygons.size() + 11999) / 12000);
+            for (std::size_t i = 0; i < data_.mesh->polygons.size(); i += step)
+            {
+                const auto& indices = data_.mesh->polygons[i].vertices;
+                if (indices.size() != 3)
+                {
+                    continue;
+                }
+                std::array<Eigen::Vector3f, 3> triangle;
+                bool valid = true;
+                for (std::size_t j = 0; j < 3; ++j)
+                {
+                    if (indices[j] < 0 || std::size_t(indices[j]) >= vertices.size() ||
+                        !pcl::isFinite(vertices[indices[j]]))
+                    {
+                        valid = false;
+                        break;
+                    }
+                    triangle[j] = vertices[indices[j]].getVector3fMap();
+                }
+                if (valid)
+                {
+                    triangles_.push_back(triangle);
+                }
+            }
+        }
+
+        normalLines_.clear();
+        if (data_.cloud && data_.normals && data_.normals->size() == data_.cloud->size())
+        {
+            const auto step = std::max<std::size_t>(1, (data_.cloud->size() + 449) / 450);
+            for (std::size_t i = 0; i < data_.cloud->size(); i += step)
+            {
+                const auto& normal = (*data_.normals)[i];
+                const Eigen::Vector3f direction(normal.normal_x, normal.normal_y, normal.normal_z);
+                const Eigen::Vector3f start = (*data_.cloud)[i].getVector3fMap();
+                const Eigen::Vector3f end = start + direction * float(data_.normalScale);
+                if (start.allFinite() && end.allFinite())
+                {
+                    normalLines_.push_back({start, end});
+                }
+            }
+        }
     }
 
     QPointF PointCloudView::project(const Eigen::Vector3f& point, double* depth) const
     {
-        const auto d = point - camera_.center;
-        double x = std::cos(camera_.yaw) * d.x() + std::sin(camera_.yaw) * d.y();
-        double y = -std::sin(camera_.yaw) * d.x() + std::cos(camera_.yaw) * d.y();
-        double z = -std::sin(camera_.pitch) * y + std::cos(camera_.pitch) * d.z();
+        // 避免在每个点上构造 Eigen 表达式，Debug 构建也保持轻量。
+        const auto* position = point.data();
+        const auto* center = camera_.center.data();
+        const double x = double(position[0]) - center[0];
+        const double y = double(position[1]) - center[1];
+        const double z = double(position[2]) - center[2];
+        const auto* horizontal = screenX_.data();
+        const auto* vertical = screenY_.data();
         if (depth)
         {
-            *depth = std::cos(camera_.pitch) * y + std::sin(camera_.pitch) * d.z();
+            const auto* direction = depthDirection_.data();
+            *depth = direction[0] * x + direction[1] * y + direction[2] * z;
         }
-        double scale =
-            .40 * std::min(width(), height()) * camera_.zoom / std::max(.0001f, camera_.radius);
-        return {width() / 2. + x * scale + camera_.pan.x(),
-            height() / 2. - z * scale + camera_.pan.y()};
+        return screenCenter_ +
+            QPointF(horizontal[0] * x + horizontal[1] * y + horizontal[2] * z,
+                vertical[0] * x + vertical[1] * y + vertical[2] * z);
     }
 
     void PointCloudView::paintEvent(QPaintEvent*)
     {
+        const qreal ratio = devicePixelRatioF();
+        const QSize pixels(qCeil(width() * ratio), qCeil(height() * ratio));
+        if (frame_.size() != pixels || frame_.devicePixelRatio() != ratio)
+        {
+            frame_ = QImage(pixels, QImage::Format_ARGB32_Premultiplied);
+            frame_.setDevicePixelRatio(ratio);
+            frameDirty_ = true;
+        }
+        if (frameDirty_)
+        {
+            renderFrame();
+            frameDirty_ = false;
+        }
         QPainter painter(this);
+        painter.drawImage(QPointF(), frame_);
+    }
+
+    void PointCloudView::changeEvent(QEvent* event)
+    {
+        QWidget::changeEvent(event);
+        invalidateFrame();
+    }
+
+    void PointCloudView::renderFrame()
+    {
+        // 每帧只计算一次相机矩阵，所有点、网格、法线共用同一投影。
+        const double cy = std::cos(camera_.yaw);
+        const double sy = std::sin(camera_.yaw);
+        const double cp = std::cos(camera_.pitch);
+        const double sp = std::sin(camera_.pitch);
+        const double scale =
+            .40 * std::min(width(), height()) * camera_.zoom / std::max(.0001f, camera_.radius);
+        screenX_ = Eigen::Vector3d(cy, sy, 0.) * scale;
+        screenY_ = Eigen::Vector3d(-sp * sy, sp * cy, -cp) * scale;
+        depthDirection_ = Eigen::Vector3d(-cp * sy, cp * cy, sp);
+        screenCenter_ = QPointF(width() / 2., height() / 2.) + camera_.pan;
+
+        QPainter painter(&frame_);
+        painter.setFont(font());
         painter.fillRect(rect(), QColor("#101c2c"));
         painter.setRenderHint(QPainter::Antialiasing);
         // 地面网格与坐标轴使用相同投影，帮助理解三维方向与坐标变换。
@@ -64,103 +212,35 @@ namespace demo
             painter.drawLine(project(c + Eigen::Vector3f(v, -r, -r * .55f)),
                 project(c + Eigen::Vector3f(v, r, -r * .55f)));
         }
-        if (showMesh_ && data_.mesh && !data_.mesh->polygons.empty())
+        const bool interacting = interactionTimer_.isActive();
+        if (showMesh_)
         {
-            Cloud vertices;
-            pcl::fromPCLPointCloud2(data_.mesh->cloud, vertices);
+            painter.setRenderHint(QPainter::Antialiasing, !interacting);
             painter.setPen(QPen(QColor(100, 201, 240, 125), .7));
-            // 教学查看器以线框显示三角面，导出的 PLY 仍包含全部网格拓扑。
-            std::size_t step =
-                std::max<std::size_t>(1, (data_.mesh->polygons.size() + 11999) / 12000);
-            for (std::size_t i = 0; i < data_.mesh->polygons.size(); i += step)
+            const auto step =
+                interacting ? std::max<std::size_t>(1, (triangles_.size() + 1999) / 2000) : 1;
+            for (std::size_t i = 0; i < triangles_.size(); i += step)
             {
-                const auto& poly = data_.mesh->polygons[i].vertices;
-                if (poly.size() != 3)
-                {
-                    continue;
-                }
-                QPolygonF triangle;
-                for (auto index : poly)
-                {
-                    if (index < vertices.size())
-                    {
-                        triangle << project(vertices[index].getVector3fMap());
-                    }
-                }
-                if (triangle.size() == 3)
-                {
-                    painter.drawPolygon(triangle);
-                }
+                const auto& triangle = triangles_[i];
+                const QPointF points[] = {
+                    project(triangle[0]), project(triangle[1]), project(triangle[2])};
+                painter.drawPolygon(points, 3);
             }
         }
 
-        struct Dot
-        {
-            QPointF xy;
-            double depth;
-            Color color;
-        };
-
-        std::vector<Dot> dots;
-        auto append = [&](const Cloud::ConstPtr& cloud, bool target)
-        {
-            if (!cloud)
-            {
-                return;
-            }
-            auto stride = std::max<std::size_t>(1, (cloud->size() + 44999) / 45000);
-            for (std::size_t i = 0; i < cloud->size(); i += stride)
-            {
-                const auto& point = (*cloud)[i];
-                if (!pcl::isFinite(point))
-                {
-                    continue;
-                }
-                Dot dot;
-                dot.xy = project(point.getVector3fMap(), &dot.depth);
-                dot.color = target
-                    ? Color{68, 223, 153}
-                    : (data_.colors.size() == cloud->size() ? data_.colors[i] : Color{});
-                dots.push_back(dot);
-            }
-        };
-        append(data_.cloud, false);
-        append(data_.target, true);
-        // 远处先画、近处后画，保证覆盖关系；不改变原始点云索引。
-        std::sort(dots.begin(),
-            dots.end(),
-            [](const Dot& a, const Dot& b)
-            {
-                return a.depth < b.depth;
-            });
-        painter.setRenderHint(QPainter::Antialiasing, false);
-        QPen pen;
-        pen.setWidth(pointSize_);
-        pen.setCapStyle(Qt::RoundCap);
-        for (const auto& dot : dots)
-        {
-            pen.setColor(QColor(dot.color.r, dot.color.g, dot.color.b));
-            painter.setPen(pen);
-            painter.drawPoint(dot.xy);
-        }
-        painter.setRenderHint(QPainter::Antialiasing);
-        if (showNormals_ && data_.normals && data_.normals->size() == data_.cloud->size())
+        renderPoints();
+        painter.drawImage(QPointF(), pointLayer_);
+        painter.setRenderHint(QPainter::Antialiasing, !interacting);
+        if (showNormals_)
         {
             painter.setPen(QPen(QColor(255, 204, 110, 175), 1));
-            auto step = std::max<std::size_t>(1, (data_.cloud->size() + 449) / 450);
-            for (std::size_t i = 0; i < data_.cloud->size(); i += step)
+            const std::size_t step = interacting ? 3 : 1;
+            for (std::size_t i = 0; i < normalLines_.size(); i += step)
             {
-                const auto& n = (*data_.normals)[i];
-                Eigen::Vector3f normal(n.normal_x, n.normal_y, n.normal_z);
-                if (!normal.allFinite())
-                {
-                    continue;
-                }
-                Eigen::Vector3f start = (*data_.cloud)[i].getVector3fMap();
-                painter.drawLine(
-                    project(start), project(start + normal * float(data_.normalScale)));
+                painter.drawLine(project(normalLines_[i][0]), project(normalLines_[i][1]));
             }
         }
+        painter.setRenderHint(QPainter::Antialiasing);
         // 小型坐标三叉在视口左下角，不受平移影响。
         QPointF anchor(38, height() - 42);
         auto zero = project(camera_.center);
@@ -213,6 +293,79 @@ namespace demo
             "拖动旋转 · 右键平移 · 滚轮缩放");
     }
 
+    void PointCloudView::renderPoints()
+    {
+        const qreal ratio = frame_.devicePixelRatio();
+        if (pointLayer_.size() != frame_.size())
+        {
+            pointLayer_ = QImage(frame_.size(), QImage::Format_ARGB32_Premultiplied);
+        }
+        pointLayer_.setDevicePixelRatio(ratio);
+        pointLayer_.fill(Qt::transparent);
+        const int pixelWidth = pointLayer_.width();
+        const int pixelHeight = pointLayer_.height();
+        auto* pixels = reinterpret_cast<QRgb*>(pointLayer_.bits());
+        const int rowStride = pointLayer_.bytesPerLine() / int(sizeof(QRgb));
+        depthBuffer_.resize(std::size_t(pixelWidth) * pixelHeight);
+        std::fill(
+            depthBuffer_.begin(), depthBuffer_.end(), -std::numeric_limits<double>::infinity());
+        auto* depths = depthBuffer_.data();
+
+        // 点精灵直接写入像素深度缓冲：无需排序，也无需逐点切换 QPainter 画笔。
+        // 所有缓冲按实际设备像素分配，保证高 DPI 下的点大小与遮挡关系一致。
+        const double radius = std::max(.5, pointSize_ * ratio / 2.);
+        const int extent = int(std::ceil(radius));
+        std::vector<QPoint> footprint;
+        for (int y = -extent; y <= extent; ++y)
+        {
+            for (int x = -extent; x <= extent; ++x)
+            {
+                if (x * x + y * y <= radius * radius)
+                {
+                    footprint.emplace_back(x, y);
+                }
+            }
+        }
+        auto draw = [&](const std::vector<DisplayPoint>& points)
+        {
+            const auto step = interactionTimer_.isActive()
+                ? std::max<std::size_t>(1, (points.size() + 11999) / 12000)
+                : 1;
+            for (std::size_t i = 0; i < points.size(); i += step)
+            {
+                const auto& point = points.data()[i];
+                double depth = 0.;
+                const QPointF xy = project(point.position, &depth) * ratio;
+                if (!std::isfinite(xy.x()) || !std::isfinite(xy.y()) || !std::isfinite(depth) ||
+                    xy.x() < -extent || xy.y() < -extent || xy.x() >= pixelWidth + extent ||
+                    xy.y() >= pixelHeight + extent)
+                {
+                    continue;
+                }
+                const int centerX = qRound(xy.x());
+                const int centerY = qRound(xy.y());
+                for (std::size_t j = 0; j < footprint.size(); ++j)
+                {
+                    const auto& offset = footprint.data()[j];
+                    const int x = centerX + offset.x();
+                    const int y = centerY + offset.y();
+                    if (x < 0 || x >= pixelWidth || y < 0 || y >= pixelHeight)
+                    {
+                        continue;
+                    }
+                    const auto index = std::size_t(y) * pixelWidth + x;
+                    if (depth >= depths[index])
+                    {
+                        depths[index] = depth;
+                        pixels[std::size_t(y) * rowStride + x] = point.color;
+                    }
+                }
+            }
+        };
+        draw(cloudPoints_);
+        draw(targetPoints_);
+    }
+
     void PointCloudView::mousePressEvent(QMouseEvent* event)
     {
         previousMouse_ = event->pos();
@@ -237,7 +390,7 @@ namespace demo
         {
             return;
         }
-        update();
+        beginInteraction();
         emit cameraChanged();
     }
 
@@ -250,7 +403,7 @@ namespace demo
     {
         camera_.zoom =
             std::clamp(camera_.zoom * std::pow(1.0015, event->angleDelta().y()), .05, 100.);
-        update();
+        beginInteraction();
         emit cameraChanged();
         event->accept();
     }
@@ -261,7 +414,7 @@ namespace demo
         camera_.pitch = .5;
         camera_.zoom = 1;
         camera_.pan = {};
-        update();
+        beginInteraction();
         emit cameraChanged();
     }
 } // namespace demo
